@@ -3,7 +3,6 @@
 #pragma region Standard Library
 #include <array>
 #include <set>
-#include <stack>
 #pragma endregion
 
 #pragma region Boost Library
@@ -58,6 +57,7 @@ namespace boost
 				return findToken(sContent, "<", ">", uStartPos);
 			}
 
+			// Find a string that may have quate
 			std::array<size_t, 2> findQuateString(const std::string& sContent, const size_t& uStartPos, const size_t& uEndPos)
 			{
 				// find a non-empty start
@@ -89,6 +89,7 @@ namespace boost
 				return{ std::string::npos, std::string::npos };
 			}
 
+			// parse attributes in tag
 			void parseAttribute(const std::string& sContent, const size_t& uStartPos, const size_t& uEndPos, ptree& ptNode )
 			{
 				size_t uLastPos = uStartPos;
@@ -109,6 +110,11 @@ namespace boost
 
 					// get attribute name
 					std::string sName = sContent.substr(uNameStartPos, uNameEndPos - uNameStartPos);
+					if (sName == "/")
+					{
+						uLastPos = uNameEndPos;
+						continue;
+					}
 
 					// check if the follow char is '='
 					uNameStartPos = sContent.find_first_not_of(" \t\n\r<>", uNameEndPos);
