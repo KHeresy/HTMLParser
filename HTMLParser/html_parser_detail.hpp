@@ -21,9 +21,6 @@ namespace boost
 			const std::set<std::string> setSingleSideTag = { "!DOCTYPE", "base", "basefont", "br", "hr", "input", "img", "link", "meta" };
 			#pragma endregion
 
-			bool parseWholeString(const std::string& sContent, const size_t& uStartPos, ptree& pt);
-			std::array<size_t, 2> parseFirstTagTree(const std::string& sContent, const size_t& uStartPos, ptree &pt);
-
 			// Add string as text node without tag
 			void addTextNode(std::string sContent, ptree &ptNode, bool bTrim = true)
 			{
@@ -38,23 +35,18 @@ namespace boost
 				}
 			}
 
-			std::array<size_t, 2> findToken(const std::string& sContent, const std::string& sBegin, const std::string& sEnd, const size_t& uStartPos)
-			{
-				size_t uS = sContent.find(sBegin, uStartPos);
-				if (uS != std::string::npos)
-				{
-					size_t uE = sContent.find(sEnd, uS + sBegin.size());
-					if (uE != std::string::npos)
-						return{ uS, uE + sEnd.size() };
-				}
-				return{ std::string::npos, std::string::npos };
-			}
-
 			// Find a tag, from '<' to '>'
 			std::array<size_t, 2> findTag(const std::string& sContent, const size_t& uStartPos)
 			{
 				// TODO: doesn't consider if there is '>' in tag attribute
-				return findToken(sContent, "<", ">", uStartPos);
+				size_t uS = sContent.find('<', uStartPos);
+				if (uS != std::string::npos)
+				{
+					size_t uE = sContent.find('>', uS + 1);
+					if (uE != std::string::npos)
+						return{ uS, uE + 1 };
+				}
+				return{ std::string::npos, std::string::npos };
 			}
 
 			// Find a string that may have quate
@@ -230,9 +222,9 @@ namespace boost
 				return{ std::string::npos, std::string::npos };
 			}
 
-			bool parseWholeString(const std::string& sContent, const size_t& uStartPos, ptree& ptNode)
+			bool parseWholeString(const std::string& sContent, ptree& ptNode)
 			{
-				std::array<size_t, 2> aLastRange = { uStartPos, uStartPos };
+				std::array<size_t, 2> aLastRange = { 0, 0 };
 				while (true)
 				{
 					std::array<size_t, 2> aCurRange = parseFirstTagTree(sContent, aLastRange[1], ptNode);
@@ -245,7 +237,8 @@ namespace boost
 					}
 					else if (aCurRange[0] == aCurRange[1])
 					{
-						// found a close tag
+						// found a close tag, should not happen?
+						assert(true, "found a close tag");
 					}
 					else
 					{
