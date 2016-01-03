@@ -1,6 +1,5 @@
 #pragma once
 
-#include <array>
 #include <string>
 
 #include <boost/property_tree/ptree.hpp>
@@ -13,10 +12,8 @@ namespace boost
 	{
 		void read_html(std::istream &stream, ptree &pt)
 		{
-			std::string sLine;
-			while (std::getline(stream, sLine))
-			{
-			}
+			std::string sHTML((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+			detail::parseWholeString(sHTML, pt, 0);
 		}
 	}
 }

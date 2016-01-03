@@ -19,7 +19,7 @@ namespace boost
 		{
 			#pragma region pre-defined variables
 			// the set of tag that only have open-side tag, no close-side
-			const std::set<std::string> setSingleSideTag = { "!DOCTYPE", "base", "basefont", "br", "hr", "input", "link", "meta" };
+			const std::set<std::string> setSingleSideTag = { "!DOCTYPE", "base", "basefont", "br", "hr", "input", "img", "link", "meta" };
 			#pragma endregion
 
 			bool parseWholeString(const std::string& sContent, ptree& pt, const size_t& uStartPos);
@@ -58,23 +58,27 @@ namespace boost
 				return findToken(sContent, "<", ">", uStartPos);
 			}
 
+			// Find the first tag tree in given string
+			// return { tag start position, tag end posinion } if is a vaild tag
+			// return { pos, pos } if is a close tag
+			// return { std::string::npos, std::string::npos } if invaild
 			std::array<size_t, 2> parseFirstTagTree( const std::string& sContent, ptree& ptNode, const size_t& uStartPos)
 			{
-				auto aRange = findTag(sContent, uStartPos);
-				if (aRange[0] != std::string::npos)
+				std::array<size_t, 2> aOpenTagRange = findTag(sContent, uStartPos);
+				if (aOpenTagRange[0] != std::string::npos)
 				{
 					ptree nodeThis;
 
-					size_t uEndofTagName = sContent.find_first_of(" \t\n\r<>", aRange[0] + 1);
+					size_t uEndofTagName = sContent.find_first_of(" \t\n\r<>", aOpenTagRange[0] + 1);
 					if (uEndofTagName != std::string::npos)
 					{
 						// get tag name
-						std::string sTagName = sContent.substr(aRange[0] + 1, uEndofTagName - aRange[0] - 1);
+						std::string sTagName = sContent.substr(aOpenTagRange[0] + 1, uEndofTagName - aOpenTagRange[0] - 1);
 						
 						// check if is a comment
 						if (sTagName.substr(0, 3) == "!--")
 						{
-							size_t uEndPos = sContent.find("-->", aRange[0]);
+							size_t uEndPos = sContent.find("-->", aOpenTagRange[0]);
 							if (uEndPos == std::string::npos)
 							{
 								// TODO: Can't find the end of comment
@@ -86,38 +90,55 @@ namespace boost
 							boost::algorithm::trim(sComment);
 							nodeThis.put_value(sComment);
 							ptNode.add_child("<htmlcomment>", nodeThis);
-							return aRange;
+							return aOpenTagRange;
+						}
+
+						// check if is a close-tag
+						if (sTagName[0] == '/')
+						{
+							return{ aOpenTagRange[0],aOpenTagRange[0] };
 						}
 
 						// TODO: process attribute
 
 						// single side tag, without value
-						if (sContent[aRange[1] - 2] == '/' || setSingleSideTag.find(sTagName) != setSingleSideTag.end())
+						if ((sContent.size() > 2 && sContent[aOpenTagRange[1] - 2] == '/' ) || setSingleSideTag.find(sTagName) != setSingleSideTag.end())
 						{
 							// close directly
 							ptNode.add_child(sTagName, nodeThis);
-							return aRange;
+							return aOpenTagRange;
 						}
 
-						// find close tag
-						size_t uClosePos = sContent.find("</" + sTagName, aRange[1]);
-						if (uClosePos == std::string::npos)
+						// process string between start and close tags
+						std::array<size_t, 2> aChildRange = { aOpenTagRange[1], aOpenTagRange[1] };
+						while (aChildRange[0] != std::string::npos)
 						{
-							// TODO: some tag may need a close tag, but can't be found
-						}
-						else
-						{
-							// with close tag
-							size_t uEndOfClosePos = sContent.find(">", uClosePos);
-							if (uEndOfClosePos != std::string::npos)
+							std::array<size_t, 2> aTagRange = parseFirstTagTree(sContent, nodeThis, aChildRange[1]);
+							if (aTagRange[0] != std::string::npos)
 							{
-								std::string sValue = sContent.substr(aRange[1], uClosePos - aRange[1]);
+								// process data between tags
+								if (aChildRange[1] != aTagRange[0])
+								{
+									std::string sValue = sContent.substr(aChildRange[1], aTagRange[0] - aChildRange[1]);
+									addTextNode(sValue, nodeThis);
+								}
 
-								parseWholeString(sValue,nodeThis, 0);
+								if (aTagRange[0] == aTagRange[1])
+								{
+									// is a close tag
+									std::array<size_t, 2> aCloseTagRange = findTag(sContent, aTagRange[0]);
+									std::string sCloseTagName = sContent.substr(aCloseTagRange[0] + 2, aCloseTagRange[1] - aCloseTagRange[0] - 3);
 
-								ptNode.add_child(sTagName, nodeThis);
-								return{ aRange[0] , uEndOfClosePos + 1 };
+									// close current tag
+									ptNode.add_child(sTagName,nodeThis);
+
+									if (sTagName == sCloseTagName)
+										return{ aOpenTagRange[0],aCloseTagRange[1] };
+									else
+										return{ aCloseTagRange[0],aCloseTagRange[0] };
+								}
 							}
+							aChildRange = aTagRange;
 						}
 					}
 				}
@@ -136,6 +157,10 @@ namespace boost
 						std::string sNoTagValue = sContent.substr(aLastRange[1]);
 						addTextNode(sNoTagValue, pt);
 						break;
+					}
+					else if (aCurRange[0] == aCurRange[1])
+					{
+						// found a close tag
 					}
 					else
 					{

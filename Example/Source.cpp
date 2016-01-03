@@ -29,12 +29,12 @@ int main(int argc, char** argv)
 {
 	// read HTML
 	std::ifstream fileHTML("test.html");
-	std::string sHTML((std::istreambuf_iterator<char>(fileHTML)), std::istreambuf_iterator<char>());
-	fileHTML.close();
 
 	// Parse html
 	boost::property_tree::ptree ptreeHTML;
-	boost::property_tree::detail::parseWholeString(sHTML, ptreeHTML, 0);
+	boost::property_tree::read_html(fileHTML, ptreeHTML);
+
+	fileHTML.close();
 
 	// Output
 	std::cout << std::pair<int, const boost::property_tree::ptree&>(0, ptreeHTML) << std::endl;
