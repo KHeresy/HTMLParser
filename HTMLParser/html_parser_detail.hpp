@@ -17,8 +17,8 @@ namespace boost
 		namespace detail
 		{
 			#pragma region pre-defined variables
-			// the set of tag that only have open-side tag, no close-side
-			const std::set<std::string> setSingleSideTag = { "!DOCTYPE", "base", "basefont", "br", "hr", "input", "img", "link", "meta" };
+			// the set of tag that only have open-side tag, no close-side. Lower case only
+			const std::set<std::string> setSingleSideTag = { "!doctype", "base", "basefont", "br", "hr", "input", "img", "link", "meta" };
 			#pragma endregion
 
 			// Add string as text node without tag
@@ -101,8 +101,8 @@ namespace boost
 						break;
 
 					// get attribute name
-					std::string sName = sContent.substr(uNameStartPos, uNameEndPos - uNameStartPos);
-					if (sName == "/")
+					std::string sAttrName = sContent.substr(uNameStartPos, uNameEndPos - uNameStartPos);
+					if (sAttrName == "/")
 					{
 						uLastPos = uNameEndPos;
 						continue;
@@ -127,7 +127,7 @@ namespace boost
 					{
 						uLastPos = uNameStartPos + 1;
 					}
-					ptAttributeList.add_child(sName, ptAttribute);
+					ptAttributeList.add_child(sAttrName, ptAttribute);
 				}
 
 				if (ptAttributeList.size() > 0)
@@ -150,7 +150,8 @@ namespace boost
 					{
 						// get tag name
 						std::string sTagName = sContent.substr(aOpenTagRange[0] + 1, uEndofTagName - aOpenTagRange[0] - 1);
-						
+						boost::algorithm::to_lower(sTagName);
+
 						// check if is a comment
 						if (sTagName.substr(0, 3) == "!--")
 						{
@@ -177,6 +178,21 @@ namespace boost
 
 						// process attribute
 						parseAttribute(sContent, uEndofTagName, aOpenTagRange[1], nodeThis);
+
+						// process <script> as a special case since it may have '<' or '>' inside
+						if (sTagName == "script")
+						{
+							// found close-tag directlly
+							size_t uClosePos = sContent.find("</script", aOpenTagRange[1]);
+							if (uClosePos != std::string::npos)
+							{
+								std::string sCode = sContent.substr(aOpenTagRange[1], uClosePos - aOpenTagRange[1]);
+								addTextNode(sCode, nodeThis);
+
+								uClosePos = sContent.find(">", uClosePos);
+								return{ aOpenTagRange[0],uClosePos+1 };
+							}
+						}
 
 						// single side tag, without value
 						if ((sContent.size() > 2 && sContent[aOpenTagRange[1] - 2] == '/' ) || setSingleSideTag.find(sTagName) != setSingleSideTag.end())
@@ -238,7 +254,6 @@ namespace boost
 					else if (aCurRange[0] == aCurRange[1])
 					{
 						// found a close tag, should not happen?
-						assert(true, "found a close tag");
 					}
 					else
 					{
