@@ -13,7 +13,7 @@ namespace boost
 		void read_html(std::istream &stream, ptree &pt)
 		{
 			std::string sHTML((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
-			detail::parseWholeString(sHTML, pt, 0);
+			detail::parseWholeString(sHTML, 0, pt);
 		}
 	}
 }

@@ -22,8 +22,8 @@ namespace boost
 			const std::set<std::string> setSingleSideTag = { "!DOCTYPE", "base", "basefont", "br", "hr", "input", "img", "link", "meta" };
 			#pragma endregion
 
-			bool parseWholeString(const std::string& sContent, ptree& pt, const size_t& uStartPos);
-			std::array<size_t, 2> parseFirstTagTree(const std::string& sContent, ptree &pt, const size_t& uStartPos);
+			bool parseWholeString(const std::string& sContent, const size_t& uStartPos, ptree& pt);
+			std::array<size_t, 2> parseFirstTagTree(const std::string& sContent, const size_t& uStartPos, ptree &pt);
 
 			// Add string as text node without tag
 			void addTextNode(std::string sContent, ptree &ptNode, bool bTrim = true)
@@ -58,11 +58,89 @@ namespace boost
 				return findToken(sContent, "<", ">", uStartPos);
 			}
 
+			std::array<size_t, 2> findQuateString(const std::string& sContent, const size_t& uStartPos, const size_t& uEndPos)
+			{
+				// find a non-empty start
+				size_t uFirstPos = sContent.find_first_not_of(" \t\n\r", uStartPos);
+				if (uFirstPos == std::string::npos || uFirstPos >= uEndPos)
+					return{ std::string::npos, std::string::npos };
+
+				// check if there is ' or "
+				char cQuateChar = ' ';
+				if (sContent[uFirstPos] == '\'' || sContent[uFirstPos] == '\"')
+				{
+					cQuateChar = sContent[uFirstPos];
+
+					// find the next quate char
+					for (size_t uIdx = uFirstPos + 1; uIdx < uEndPos; ++uIdx)
+					{
+						if (sContent[uIdx] == cQuateChar && sContent[uIdx - 1] != '\\')
+						{
+							return{ uFirstPos , uIdx + 1 };
+						}
+					}
+				}
+				else
+				{
+					size_t uSecondPos = sContent.find_first_of(" \t\n\r>", uFirstPos + 1);
+					if (uSecondPos != std::string::npos && uSecondPos <= uEndPos)
+						return{ uFirstPos, uSecondPos + 1};
+				}
+				return{ std::string::npos, std::string::npos };
+			}
+
+			void parseAttribute(const std::string& sContent, const size_t& uStartPos, const size_t& uEndPos, ptree& ptNode )
+			{
+				size_t uLastPos = uStartPos;
+				ptree ptAttributeList;
+				while (true)
+				{
+					ptree ptAttribute;
+
+					// find the begin of attribute name
+					size_t uNameStartPos = sContent.find_first_not_of(" \t\n\r<>", uLastPos);
+					if (uNameStartPos == std::string::npos || uNameStartPos >= uEndPos)
+						break;
+
+					// find the end of attribute name
+					size_t uNameEndPos = sContent.find_first_of(" \t\n\r=>", uNameStartPos + 1);
+					if (uNameEndPos == std::string::npos || uNameEndPos >= uEndPos)
+						break;
+
+					// get attribute name
+					std::string sName = sContent.substr(uNameStartPos, uNameEndPos - uNameStartPos);
+
+					// check if the follow char is '='
+					uNameStartPos = sContent.find_first_not_of(" \t\n\r<>", uNameEndPos);
+					if (uNameStartPos != std::string::npos && uNameStartPos < uEndPos && sContent[uNameStartPos] == '=')
+					{
+						// attribute with value
+						std::array<size_t, 2> aTextRange = findQuateString(sContent, uNameStartPos + 1, uEndPos);
+						if (aTextRange[0] != std::string::npos)
+						{
+							std::string sValue = sContent.substr(aTextRange[0], aTextRange[1] - aTextRange[0]);
+							if (sValue[0] == '\'' || sValue[0] == '\"')
+								sValue = sValue.substr(1, sValue.size() - 2);
+							ptAttribute.put_value(sValue);
+							uLastPos = aTextRange[1];
+						}
+					}
+					else
+					{
+						uLastPos = uNameStartPos + 1;
+					}
+					ptAttributeList.add_child(sName, ptAttribute);
+				}
+
+				if (ptAttributeList.size() > 0)
+					ptNode.add_child("<htmlattr>", ptAttributeList);
+			}
+
 			// Find the first tag tree in given string
 			// return { tag start position, tag end posinion } if is a vaild tag
 			// return { pos, pos } if is a close tag
 			// return { std::string::npos, std::string::npos } if invaild
-			std::array<size_t, 2> parseFirstTagTree( const std::string& sContent, ptree& ptNode, const size_t& uStartPos)
+			std::array<size_t, 2> parseFirstTagTree( const std::string& sContent, const size_t& uStartPos, ptree& ptNode)
 			{
 				std::array<size_t, 2> aOpenTagRange = findTag(sContent, uStartPos);
 				if (aOpenTagRange[0] != std::string::npos)
@@ -99,7 +177,8 @@ namespace boost
 							return{ aOpenTagRange[0],aOpenTagRange[0] };
 						}
 
-						// TODO: process attribute
+						// process attribute
+						parseAttribute(sContent, uEndofTagName, aOpenTagRange[1], nodeThis);
 
 						// single side tag, without value
 						if ((sContent.size() > 2 && sContent[aOpenTagRange[1] - 2] == '/' ) || setSingleSideTag.find(sTagName) != setSingleSideTag.end())
@@ -113,7 +192,7 @@ namespace boost
 						std::array<size_t, 2> aChildRange = { aOpenTagRange[1], aOpenTagRange[1] };
 						while (aChildRange[0] != std::string::npos)
 						{
-							std::array<size_t, 2> aTagRange = parseFirstTagTree(sContent, nodeThis, aChildRange[1]);
+							std::array<size_t, 2> aTagRange = parseFirstTagTree(sContent, aChildRange[1], nodeThis);
 							if (aTagRange[0] != std::string::npos)
 							{
 								// process data between tags
@@ -145,17 +224,17 @@ namespace boost
 				return{ std::string::npos, std::string::npos };
 			}
 
-			bool parseWholeString(const std::string& sContent, ptree &pt, const size_t& uStartPos)
+			bool parseWholeString(const std::string& sContent, const size_t& uStartPos, ptree& ptNode)
 			{
 				std::array<size_t, 2> aLastRange = { uStartPos, uStartPos };
 				while (true)
 				{
-					std::array<size_t, 2> aCurRange = parseFirstTagTree(sContent, pt, aLastRange[1] );
+					std::array<size_t, 2> aCurRange = parseFirstTagTree(sContent, aLastRange[1], ptNode);
 					if (aCurRange[0] == std::string::npos)
 					{
 						// found no tag, process all text
 						std::string sNoTagValue = sContent.substr(aLastRange[1]);
-						addTextNode(sNoTagValue, pt);
+						addTextNode(sNoTagValue, ptNode);
 						break;
 					}
 					else if (aCurRange[0] == aCurRange[1])
@@ -168,7 +247,7 @@ namespace boost
 						if (aCurRange[0] != aLastRange[1])
 						{
 							std::string sNoTagValue = sContent.substr(aLastRange[1], aCurRange[0] - aLastRange[1]);
-							addTextNode(sNoTagValue, pt);
+							addTextNode(sNoTagValue, ptNode);
 						}
 						aLastRange = aCurRange;
 					}
