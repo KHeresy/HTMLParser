@@ -1,6 +1,6 @@
 # HTMLParser
 
-This a simple header only HTML parser library.
+This a simple C++11, header only HTML parser library.
 The output format is Boost.PropertyTree
 http://www.boost.org/doc/libs/1_60_0/doc/html/property_tree.html
 
